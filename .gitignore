@@ -1,0 +1,28 @@
+# Build outputs
+/bin/
+/dist/
+*.exe
+*.test
+*.out
+
+# Local catalog and private context data
+/.ctx/
+/.ctx-local/
+catalog.json
+scan-cache.json
+names.json
+snapshots/
+
+# Editor and OS files
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Secrets and local overrides
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+local.*
