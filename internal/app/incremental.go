@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
@@ -52,6 +53,9 @@ func validScanCacheEntry(entry core.ScanCacheEntry, generatedAt time.Time) bool 
 	if entry.Thread.ID == "" || entry.Thread.Provider != entry.Adapter || entry.Thread.UpdatedAt == "" || entry.Thread.LineCount < 0 {
 		return false
 	}
+	if err := core.ValidateThreadIdentity(entry.Thread); err != nil {
+		return false
+	}
 	updatedAt, err := time.Parse(time.RFC3339Nano, entry.Thread.UpdatedAt)
 	if err != nil || updatedAt.UnixNano() != entry.ModTimeUnixNano {
 		return false
@@ -69,16 +73,17 @@ func scanIncrementalRoot(
 	root string,
 	cache map[string]core.ScanCacheEntry,
 	scanStarted time.Time,
-) ([]core.Thread, []core.ScanCacheEntry, error) {
+) ([]core.Thread, []core.ScanCacheEntry, []string, error) {
 	files, err := adapter.Discover(ctx, root)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	threads := make([]core.Thread, 0, len(files))
 	entries := make([]core.ScanCacheEntry, 0, len(files))
+	warnings := make([]string, 0)
 	for _, file := range files {
 		if err := ctx.Err(); err != nil {
-			return nil, nil, err
+			return nil, nil, warnings, err
 		}
 		key := scanCacheKey(adapter.Name(), root, file.Path)
 		if cached, ok := cache[key]; ok && reusableNativeFile(cached, file, scanStarted) {
@@ -89,6 +94,13 @@ func scanIncrementalRoot(
 
 		thread, current, stable, err := parseStableNativeFile(ctx, adapter, root, file)
 		if err != nil || thread == nil {
+			if err != nil {
+				warnings = append(warnings, fmt.Sprintf("%s file %s: %v", adapter.Name(), file.Path, err))
+			}
+			continue
+		}
+		if err := core.ValidateThreadIdentity(*thread); err != nil {
+			warnings = append(warnings, fmt.Sprintf("%s file %s: invalid identity: %v", adapter.Name(), file.Path, err))
 			continue
 		}
 		threads = append(threads, *thread)
@@ -103,7 +115,7 @@ func scanIncrementalRoot(
 			})
 		}
 	}
-	return threads, entries, nil
+	return threads, entries, warnings, nil
 }
 
 func reusableNativeFile(entry core.ScanCacheEntry, file adapters.NativeFile, scanStarted time.Time) bool {

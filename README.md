@@ -16,24 +16,24 @@ remote repository (later)
 
 The first release has one sharp promise:
 
-> One command discovers existing sessions across supported agents. Any locally authorized agent can search the catalog and return to the exact native evidence—without hooks, MCP, a daemon, or a cloud account.
+> One command discovers existing context as indexed records across supported agents. Any locally authorized agent can search the catalog and return to the exact native evidence—without hooks, MCP, a daemon, or a cloud account.
 
 ## Status
 
-Clewkeep `0.1.0-rc.1` is a private-beta candidate. The Go core is intentionally small and has no third-party dependencies.
+Clewkeep `0.1.0-rc.2` is a private-beta candidate, not a public release. The Go core is intentionally small and has no third-party dependencies.
 
 Initial commands:
 
 ```text
 ctx scan [--full] [--json]
-ctx status
+ctx status [--json]
 ctx list [--provider <name>] [--project <text>] [--json]
-ctx search <query> [--limit <n>] [--json]
-ctx show <id-or-name> [--json]
-ctx name <id-or-name> <name>
-ctx snapshot [--name <name>]
-ctx diff --since [latest|snapshot]
-ctx doctor
+ctx search <query> [--provider <name>] [--project <text>] [--limit <n>] [--json]
+ctx show <record-id-or-name> [--json]
+ctx name <record-id-or-name> <name>
+ctx snapshot [--name <name>] [--json]
+ctx diff --since [latest|snapshot] [--json]
+ctx doctor [--json]
 ctx version
 ```
 
@@ -65,15 +65,26 @@ go build -o bin/ctx ./cmd/ctx
 
 Use `CTX_HOME` to override the global catalog directory. The default is `~/.ctx`.
 
-Use `ctx scan --full` to bypass the incremental cache, reparse every discovered native session, and replace the catalog and scan cache normally.
+## Record identity and RC1.2 upgrade
+
+Every indexed record has a provider-qualified canonical ID: `codex/<nativeThreadId>`, `claude/<sessionId>`, or `claude/<sessionId>/agent/<agentId>`. Search results return this ID, and the same value can be passed directly to `ctx show` or `ctx name`. Schema 0.2 JSON also preserves `native_session_id`, optional `native_agent_id`, and `record_kind` (`session` or `subagent`) as separate native facts.
+
+When upgrading from RC1.1:
+
+- An ordinary `ctx scan` ignores schema 0.1 cache entries and reparses the native files into a schema 0.2 catalog.
+- Commands that encounter a schema 0.1 catalog ask you to run `ctx scan`.
+- Schema 0.1 names migrate only when their old target maps deterministically to one main session; ambiguous or missing targets are rejected. The next successful `ctx name` write persists schema 0.2 names.
+- Schema 0.1 snapshots cannot be diffed. Create a new snapshot before using `ctx diff`.
+
+Use `ctx scan --full` to bypass the incremental cache, reparse every discovered native record, and replace the catalog and scan cache normally.
 
 Build the six private-beta archives with:
 
 ```powershell
-.\scripts\build-dist.ps1 -Version 0.1.0-rc.1
+.\scripts\build-dist.ps1 -Version 0.1.0-rc.2
 ```
 
-See [`PRIVATE_BETA.md`](PRIVATE_BETA.md) for installation, privacy, and feedback boundaries.
+See [`PRIVATE_BETA.md`](PRIVATE_BETA.md) for installation, migration, privacy, and feedback boundaries.
 
 ## Agent development
 

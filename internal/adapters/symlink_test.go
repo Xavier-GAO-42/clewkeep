@@ -36,7 +36,7 @@ func TestScanIgnoresSymlinkedFiles(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(threads) != 1 || threads[0].ID != "real" {
+	if len(threads) != 1 || threads[0].ID != "codex/real" {
 		ids := make([]string, 0, len(threads))
 		for _, thread := range threads {
 			ids = append(ids, thread.ID)

@@ -42,6 +42,12 @@ type DoctorCheck struct {
 	Detail string `json:"detail"`
 }
 
+type SearchOptions struct {
+	Provider string
+	Project  string
+	Limit    int
+}
+
 func New() (*App, error) {
 	userHome, err := os.UserHomeDir()
 	if err != nil {
@@ -87,8 +93,10 @@ func (a *App) scan(ctx context.Context, full bool) (*core.Catalog, error) {
 			found := []core.Thread(nil)
 			if incremental, ok := adapter.(adapters.IncrementalAdapter); ok {
 				var entries []core.ScanCacheEntry
-				found, entries, err = scanIncrementalRoot(ctx, incremental, root, cacheEntries, scanStarted)
+				var parseWarnings []string
+				found, entries, parseWarnings, err = scanIncrementalRoot(ctx, incremental, root, cacheEntries, scanStarted)
 				nextCacheEntries = append(nextCacheEntries, entries...)
+				warnings = append(warnings, parseWarnings...)
 			} else {
 				found, err = adapter.Scan(ctx, root)
 			}
@@ -97,6 +105,10 @@ func (a *App) scan(ctx context.Context, full bool) (*core.Catalog, error) {
 				continue
 			}
 			for _, thread := range found {
+				if err := core.ValidateThreadIdentity(thread); err != nil {
+					warnings = append(warnings, fmt.Sprintf("%s file %s: invalid identity: %v", adapter.Name(), thread.NativePath, err))
+					continue
+				}
 				pathKey := filepath.Clean(thread.NativePath)
 				if runtime.GOOS == "windows" {
 					// Only fold case where the filesystem does; folding on
@@ -109,6 +121,13 @@ func (a *App) scan(ctx context.Context, full bool) (*core.Catalog, error) {
 				}
 			}
 		}
+	}
+	canonicalPaths := make(map[string]string, len(threads))
+	for _, thread := range threads {
+		if previous, duplicate := canonicalPaths[thread.ID]; duplicate {
+			return nil, fmt.Errorf("duplicate canonical id %q from %s and %s; catalog was not updated", thread.ID, previous, thread.NativePath)
+		}
+		canonicalPaths[thread.ID] = thread.NativePath
 	}
 	sort.Slice(threads, func(i, j int) bool {
 		if threads[i].Provider != threads[j].Provider {
@@ -175,10 +194,7 @@ func (a *App) List(provider, project string) ([]core.Thread, error) {
 	project = strings.ToLower(strings.TrimSpace(project))
 	result := make([]core.Thread, 0)
 	for _, thread := range catalog.Threads {
-		if provider != "" && strings.ToLower(thread.Provider) != provider && strings.ToLower(thread.Environment) != provider {
-			continue
-		}
-		if project != "" && !strings.Contains(strings.ToLower(thread.ProjectRoot), project) {
+		if !matchesThreadFilters(thread, provider, project) {
 			continue
 		}
 		result = append(result, thread)
@@ -195,7 +211,11 @@ func (a *App) Show(ref string) (*core.Thread, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	return findThread(catalog.Threads, names.Names, ref)
+	resolved, err := resolveNames(catalog.Threads, names)
+	if err != nil {
+		return nil, "", err
+	}
+	return findThread(catalog.Threads, resolved.Names, ref)
 }
 
 func (a *App) Name(ref, name string) (*core.Thread, error) {
@@ -211,10 +231,22 @@ func (a *App) Name(ref, name string) (*core.Thread, error) {
 	if err != nil {
 		return nil, err
 	}
+	catalog, err := core.LoadCatalog(a.StoreHome)
+	if err != nil {
+		return nil, err
+	}
+	names, err = resolveNames(catalog.Threads, names)
+	if err != nil {
+		return nil, err
+	}
 	if current, exists := names.Names[name]; exists && current != thread.ID {
 		return nil, fmt.Errorf("name %q already refers to another thread", name)
 	}
+	if canonical, exists := exactCanonicalThread(catalog.Threads, name); exists {
+		return nil, fmt.Errorf("name %q conflicts with canonical record id %q", name, canonical.ID)
+	}
 	names.Names[name] = thread.ID
+	names.SchemaVersion = core.NameIndexSchemaVersion
 	if err := core.WriteJSONAtomic(core.NamesPath(a.StoreHome), names); err != nil {
 		return nil, err
 	}
@@ -222,13 +254,19 @@ func (a *App) Name(ref, name string) (*core.Thread, error) {
 }
 
 func (a *App) Search(query string, limit int) ([]core.SearchHit, error) {
+	return a.SearchWithOptions(query, SearchOptions{Limit: limit})
+}
+
+func (a *App) SearchWithOptions(query string, options SearchOptions) ([]core.SearchHit, error) {
 	query = strings.TrimSpace(query)
 	if query == "" {
 		return nil, fmt.Errorf("search query cannot be empty")
 	}
-	if limit <= 0 {
-		limit = 20
+	if options.Limit <= 0 {
+		options.Limit = 20
 	}
+	provider := strings.ToLower(strings.TrimSpace(options.Provider))
+	project := strings.ToLower(strings.TrimSpace(options.Project))
 	catalog, err := core.LoadCatalog(a.StoreHome)
 	if err != nil {
 		return nil, err
@@ -237,17 +275,24 @@ func (a *App) Search(query string, limit int) ([]core.SearchHit, error) {
 	if err != nil {
 		return nil, err
 	}
+	names, err = resolveNames(catalog.Threads, names)
+	if err != nil {
+		return nil, err
+	}
 	aliases := reverseNames(names.Names)
 	lowerQuery := strings.ToLower(query)
-	hits := make([]core.SearchHit, 0, limit)
+	hits := make([]core.SearchHit, 0, options.Limit)
 	for _, thread := range catalog.Threads {
-		if len(hits) >= limit {
+		if !matchesThreadFilters(thread, provider, project) {
+			continue
+		}
+		if len(hits) >= options.Limit {
 			break
 		}
 		metadata := strings.Join([]string{thread.ID, thread.Provider, thread.Environment, thread.ProjectRoot, aliases[thread.ID]}, " ")
 		if strings.Contains(strings.ToLower(metadata), lowerQuery) {
 			hits = append(hits, hitFor(thread, aliases[thread.ID], 0, clipAround(metadata, lowerQuery)))
-			if len(hits) >= limit {
+			if len(hits) >= options.Limit {
 				break
 			}
 		}
@@ -258,7 +303,7 @@ func (a *App) Search(query string, limit int) ([]core.SearchHit, error) {
 		scanner := bufio.NewScanner(file)
 		scanner.Buffer(make([]byte, 64*1024), maxSearchLine)
 		line := 0
-		for scanner.Scan() && len(hits) < limit {
+		for scanner.Scan() && len(hits) < options.Limit {
 			line++
 			text := searchableText(scanner.Bytes())
 			lower := strings.ToLower(text)
@@ -269,6 +314,16 @@ func (a *App) Search(query string, limit int) ([]core.SearchHit, error) {
 		_ = file.Close()
 	}
 	return hits, nil
+}
+
+func matchesThreadFilters(thread core.Thread, provider, project string) bool {
+	if provider != "" && strings.ToLower(thread.Provider) != provider && strings.ToLower(thread.Environment) != provider {
+		return false
+	}
+	if project != "" && !strings.Contains(strings.ToLower(thread.ProjectRoot), project) {
+		return false
+	}
+	return true
 }
 
 func (a *App) Snapshot(ctx context.Context, name string) (string, *core.Snapshot, error) {
@@ -308,6 +363,12 @@ func (a *App) DiffSince(ctx context.Context, selector string) (*core.TemporalDif
 	if err := core.ReadJSON(path, &before); err != nil {
 		return nil, err
 	}
+	if before.Format != "CtxSnapshot" || before.SchemaVersion != core.SnapshotSchemaVersion {
+		return nil, fmt.Errorf("snapshot schema %q/%q is incompatible with %q/%q; create a new snapshot before diffing", before.Format, before.SchemaVersion, "CtxSnapshot", core.SnapshotSchemaVersion)
+	}
+	if err := core.ValidateThreadSet(before.Threads); err != nil {
+		return nil, fmt.Errorf("snapshot contains invalid identity data: %w; create a new snapshot before diffing", err)
+	}
 	current, err := a.Scan(ctx)
 	if err != nil {
 		return nil, err
@@ -346,33 +407,117 @@ func findThread(threads []core.Thread, names map[string]string, ref string) (*co
 	if ref == "" {
 		return nil, "", fmt.Errorf("thread reference cannot be empty")
 	}
-	target := ref
-	alias := ""
-	if id, ok := names[ref]; ok {
-		target = id
-		alias = ref
+	// Canonical identity always wins over a user alias with the same text.
+	if thread, ok := exactCanonicalThread(threads, ref); ok {
+		return &thread, "", nil
 	}
-	exact := make([]core.Thread, 0)
+	if id, ok := names[ref]; ok {
+		thread, exists := exactCanonicalThread(threads, id)
+		if !exists {
+			return nil, "", fmt.Errorf("name %q refers to missing canonical id %q", ref, id)
+		}
+		return &thread, ref, nil
+	}
+	if thread, err := resolveNativeThread(threads, ref); thread != nil || err != nil {
+		return thread, "", err
+	}
 	prefix := make([]core.Thread, 0)
 	for _, thread := range threads {
-		if thread.ID == target {
-			exact = append(exact, thread)
-		} else if strings.HasPrefix(thread.ID, target) {
+		if strings.HasPrefix(thread.ID, ref) {
 			prefix = append(prefix, thread)
 		}
 	}
-	candidates := exact
-	if len(candidates) == 0 {
-		candidates = prefix
-	}
-	if len(candidates) == 0 {
+	if len(prefix) == 0 {
 		return nil, "", fmt.Errorf("thread not found: %s", ref)
 	}
-	if len(candidates) > 1 {
-		return nil, "", fmt.Errorf("thread reference is ambiguous: %s", ref)
+	if len(prefix) > 1 {
+		return nil, "", ambiguousReferenceError(ref, prefix)
 	}
-	thread := candidates[0]
-	return &thread, alias, nil
+	thread := prefix[0]
+	return &thread, "", nil
+}
+
+func exactCanonicalThread(threads []core.Thread, id string) (core.Thread, bool) {
+	for _, thread := range threads {
+		if thread.ID == id {
+			return thread, true
+		}
+	}
+	return core.Thread{}, false
+}
+
+func resolveNativeThread(threads []core.Thread, nativeID string) (*core.Thread, error) {
+	candidates := make([]core.Thread, 0)
+	for _, thread := range threads {
+		if thread.NativeSessionID == nativeID {
+			candidates = append(candidates, thread)
+		}
+	}
+	if len(candidates) == 0 {
+		return nil, nil
+	}
+	if len(candidates) == 1 {
+		return &candidates[0], nil
+	}
+	allClaude := true
+	var main *core.Thread
+	for index := range candidates {
+		if candidates[index].Provider != "claude-code" {
+			allClaude = false
+		}
+		if candidates[index].Provider == "claude-code" && candidates[index].RecordKind == core.RecordKindSession {
+			if main != nil {
+				return nil, ambiguousReferenceError(nativeID, candidates)
+			}
+			candidate := candidates[index]
+			main = &candidate
+		}
+	}
+	if allClaude && main != nil {
+		return main, nil
+	}
+	return nil, ambiguousReferenceError(nativeID, candidates)
+}
+
+func ambiguousReferenceError(ref string, candidates []core.Thread) error {
+	ids := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		ids = append(ids, candidate.ID)
+	}
+	sort.Strings(ids)
+	return fmt.Errorf("thread reference is ambiguous: %s; candidates: %s", ref, strings.Join(ids, ", "))
+}
+
+func resolveNames(threads []core.Thread, index *core.NameIndex) (*core.NameIndex, error) {
+	resolved := &core.NameIndex{
+		Format:        "CtxNameIndex",
+		SchemaVersion: core.NameIndexSchemaVersion,
+		Names:         make(map[string]string, len(index.Names)),
+	}
+	keys := make([]string, 0, len(index.Names))
+	for name := range index.Names {
+		keys = append(keys, name)
+	}
+	sort.Strings(keys)
+	for _, name := range keys {
+		target := index.Names[name]
+		if index.SchemaVersion == core.NameIndexSchemaVersion {
+			if _, ok := exactCanonicalThread(threads, target); !ok {
+				return nil, fmt.Errorf("name %q refers to missing canonical id %q", name, target)
+			}
+			resolved.Names[name] = target
+			continue
+		}
+		thread, err := resolveNativeThread(threads, target)
+		if err != nil {
+			return nil, fmt.Errorf("cannot deterministically migrate legacy name %q: %w", name, err)
+		}
+		if thread == nil || thread.RecordKind != core.RecordKindSession {
+			return nil, fmt.Errorf("cannot deterministically migrate legacy name %q to a main session", name)
+		}
+		resolved.Names[name] = thread.ID
+	}
+	return resolved, nil
 }
 
 func validateName(name string) error {
@@ -437,8 +582,13 @@ func collectStrings(value any, parts *[]string) {
 			collectStrings(item, parts)
 		}
 	case map[string]any:
-		for _, item := range typed {
-			collectStrings(item, parts)
+		keys := make([]string, 0, len(typed))
+		for key := range typed {
+			keys = append(keys, key)
+		}
+		sort.Strings(keys)
+		for _, key := range keys {
+			collectStrings(typed[key], parts)
 		}
 	}
 }
@@ -580,7 +730,7 @@ func compareSnapshots(before core.Snapshot, after []core.Thread) *core.TemporalD
 }
 
 func threadKey(thread core.Thread) string {
-	return thread.ID + "\x00" + filepath.Clean(thread.NativePath)
+	return thread.ID
 }
 
 func threadChanged(before, after core.Thread) bool {

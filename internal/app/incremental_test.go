@@ -223,8 +223,8 @@ func TestFullScanReparsesAllFilesAndRepairsSameFingerprintRewrite(t *testing.T) 
 	if err := core.ReadJSON(core.ScanCachePath(storeHome), &cache); err != nil {
 		t.Fatal(err)
 	}
-	if got := cacheThreadByPath(t, cache, alphaPath).ID; got != "synthetic-omega" {
-		t.Fatalf("full scan cache retained thread ID %q, want synthetic-omega", got)
+	if got := cacheThreadByPath(t, cache, alphaPath).ID; got != "codex/synthetic-omega" {
+		t.Fatalf("full scan cache retained thread ID %q, want codex/synthetic-omega", got)
 	}
 }
 
@@ -404,7 +404,7 @@ func assertThreadIDs(t *testing.T, catalog *core.Catalog, want ...string) {
 	t.Helper()
 	got := make([]string, 0, len(catalog.Threads))
 	for _, thread := range catalog.Threads {
-		got = append(got, thread.ID)
+		got = append(got, thread.NativeSessionID)
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("thread IDs = %v, want %v", got, want)
@@ -414,7 +414,7 @@ func assertThreadIDs(t *testing.T, catalog *core.Catalog, want ...string) {
 func threadByID(t *testing.T, catalog *core.Catalog, id string) core.Thread {
 	t.Helper()
 	for _, thread := range catalog.Threads {
-		if thread.ID == id {
+		if thread.ID == id || thread.NativeSessionID == id {
 			return thread
 		}
 	}

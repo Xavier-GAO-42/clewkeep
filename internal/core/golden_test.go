@@ -1,6 +1,6 @@
 package core
 
-// Golden tests freezing the v0.1 machine interface: format labels, schema
+// Golden tests freezing the v0.2 machine interface: format labels, schema
 // version fields, JSON field names, field order, and empty-array/omitempty
 // behavior. Agents consume these documents; any diff here is a breaking
 // interface change and must bump the schema version instead.
@@ -11,18 +11,21 @@ import (
 	"time"
 )
 
-func TestSchemaVersionsAreFrozenAtV01(t *testing.T) {
-	if CatalogSchemaVersion != "0.1" {
-		t.Fatalf("CatalogSchemaVersion = %q, want 0.1", CatalogSchemaVersion)
+func TestSchemaVersionsAreFrozenAtV02(t *testing.T) {
+	if CatalogSchemaVersion != "0.2" {
+		t.Fatalf("CatalogSchemaVersion = %q, want 0.2", CatalogSchemaVersion)
 	}
-	if ScanCacheSchemaVersion != "0.1" {
-		t.Fatalf("ScanCacheSchemaVersion = %q, want 0.1", ScanCacheSchemaVersion)
+	if ScanCacheSchemaVersion != "0.2" {
+		t.Fatalf("ScanCacheSchemaVersion = %q, want 0.2", ScanCacheSchemaVersion)
 	}
-	if SnapshotSchemaVersion != "0.1" {
-		t.Fatalf("SnapshotSchemaVersion = %q, want 0.1", SnapshotSchemaVersion)
+	if NameIndexSchemaVersion != "0.2" {
+		t.Fatalf("NameIndexSchemaVersion = %q, want 0.2", NameIndexSchemaVersion)
 	}
-	if DiffSchemaVersion != "0.1" {
-		t.Fatalf("DiffSchemaVersion = %q, want 0.1", DiffSchemaVersion)
+	if SnapshotSchemaVersion != "0.2" {
+		t.Fatalf("SnapshotSchemaVersion = %q, want 0.2", SnapshotSchemaVersion)
+	}
+	if DiffSchemaVersion != "0.2" {
+		t.Fatalf("DiffSchemaVersion = %q, want 0.2", DiffSchemaVersion)
 	}
 }
 
@@ -39,20 +42,22 @@ func mustGolden(t *testing.T, doc any, want string) {
 
 func fullSyntheticThread() Thread {
 	return Thread{
-		ID:             "thread-0001",
-		Provider:       "codex",
-		Environment:    "codex-exec",
-		ProjectRoot:    "C:/synthetic/project",
-		Title:          "thread-0001",
-		CreatedAt:      "2026-01-01T00:00:00Z",
-		UpdatedAt:      "2026-01-02T03:04:05Z",
-		NativePath:     "HOME/.codex/sessions/thread-0001.jsonl",
-		NativeFormat:   "codex.rollout-jsonl",
-		Source:         "exec",
-		Originator:     "codex",
-		Model:          "gpt-5.2",
-		HarnessVersion: "1.2.3",
-		LineCount:      2,
+		ID:              "codex/thread-0001",
+		NativeSessionID: "thread-0001",
+		RecordKind:      RecordKindSession,
+		Provider:        "codex",
+		Environment:     "codex-exec",
+		ProjectRoot:     "C:/synthetic/project",
+		Title:           "thread-0001",
+		CreatedAt:       "2026-01-01T00:00:00Z",
+		UpdatedAt:       "2026-01-02T03:04:05Z",
+		NativePath:      "HOME/.codex/sessions/thread-0001.jsonl",
+		NativeFormat:    "codex.rollout-jsonl",
+		Source:          "exec",
+		Originator:      "codex",
+		Model:           "gpt-5.2",
+		HarnessVersion:  "1.2.3",
+		LineCount:       2,
 		NativeRelations: []Relation{{
 			Kind:           "spawn",
 			ParentThreadID: "thread-0000",
@@ -65,18 +70,22 @@ func fullSyntheticThread() Thread {
 
 func minimalSyntheticThread() Thread {
 	return Thread{
-		ID:           "thread-0002",
-		Provider:     "claude-code",
-		Environment:  "claude-code",
-		ProjectRoot:  "demo",
-		UpdatedAt:    "2026-01-02T03:04:05Z",
-		NativePath:   "HOME/.claude/projects/demo/thread-0002.jsonl",
-		NativeFormat: "claude-code.transcript-jsonl",
+		ID:              "claude/thread-0002",
+		NativeSessionID: "thread-0002",
+		RecordKind:      RecordKindSession,
+		Provider:        "claude-code",
+		Environment:     "claude-code",
+		ProjectRoot:     "demo",
+		UpdatedAt:       "2026-01-02T03:04:05Z",
+		NativePath:      "HOME/.claude/projects/demo/thread-0002.jsonl",
+		NativeFormat:    "claude-code.transcript-jsonl",
 	}
 }
 
 const minimalThreadGolden = `{
-      "id": "thread-0002",
+      "id": "claude/thread-0002",
+      "native_session_id": "thread-0002",
+      "record_kind": "session",
       "provider": "claude-code",
       "environment": "claude-code",
       "project_root": "demo",
@@ -96,11 +105,13 @@ func TestCatalogGolden(t *testing.T) {
 	}
 	mustGolden(t, catalog, `{
   "format": "CtxCatalog",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "generated_at": "2026-01-02T03:04:06.123456789Z",
   "threads": [
     {
-      "id": "thread-0001",
+      "id": "codex/thread-0001",
+      "native_session_id": "thread-0001",
+      "record_kind": "session",
       "provider": "codex",
       "environment": "codex-exec",
       "project_root": "C:/synthetic/project",
@@ -148,7 +159,7 @@ func TestCatalogEmptyGolden(t *testing.T) {
 	}
 	mustGolden(t, catalog, `{
   "format": "CtxCatalog",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "generated_at": "2026-01-02T03:04:06.123456789Z",
   "threads": []
 }`)
@@ -170,7 +181,7 @@ func TestScanCacheGolden(t *testing.T) {
 	}
 	mustGolden(t, cache, `{
   "format": "CtxScanCache",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "generated_at": "2026-01-02T03:04:06.123456789Z",
   "entries": [
     {
@@ -180,7 +191,9 @@ func TestScanCacheGolden(t *testing.T) {
       "size": 123,
       "mod_time_unix_nano": 1767323045000000000,
       "thread": {
-        "id": "thread-0002",
+        "id": "claude/thread-0002",
+        "native_session_id": "thread-0002",
+        "record_kind": "session",
         "provider": "claude-code",
         "environment": "claude-code",
         "project_root": "demo",
@@ -200,7 +213,7 @@ func TestScanCacheGolden(t *testing.T) {
 	}
 	mustGolden(t, empty, `{
   "format": "CtxScanCache",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "generated_at": "2026-01-02T03:04:06.123456789Z",
   "entries": []
 }`)
@@ -209,14 +222,14 @@ func TestScanCacheGolden(t *testing.T) {
 func TestNameIndexGolden(t *testing.T) {
 	index := NameIndex{
 		Format:        "CtxNameIndex",
-		SchemaVersion: "0.1",
-		Names:         map[string]string{"demo-session": "thread-0001"},
+		SchemaVersion: NameIndexSchemaVersion,
+		Names:         map[string]string{"demo-session": "codex/thread-0001"},
 	}
 	mustGolden(t, index, `{
   "format": "CtxNameIndex",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "names": {
-    "demo-session": "thread-0001"
+    "demo-session": "codex/thread-0001"
   }
 }`)
 }
@@ -224,7 +237,7 @@ func TestNameIndexGolden(t *testing.T) {
 func TestSearchHitsGolden(t *testing.T) {
 	hits := []SearchHit{{
 		Name:        "demo-session",
-		ThreadID:    "thread-0001",
+		ThreadID:    "codex/thread-0001",
 		Provider:    "codex",
 		Environment: "codex-exec",
 		ProjectRoot: "C:/synthetic/project",
@@ -235,7 +248,7 @@ func TestSearchHitsGolden(t *testing.T) {
 	mustGolden(t, hits, `[
   {
     "name": "demo-session",
-    "thread_id": "thread-0001",
+    "thread_id": "codex/thread-0001",
     "provider": "codex",
     "environment": "codex-exec",
     "project_root": "C:/synthetic/project",
@@ -257,7 +270,7 @@ func TestSnapshotGolden(t *testing.T) {
 	}
 	mustGolden(t, snapshot, `{
   "format": "CtxSnapshot",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "name": "baseline",
   "created_at": "2026-01-02T03:04:06.123456789Z",
   "threads": [
@@ -281,14 +294,16 @@ func TestTemporalDiffGolden(t *testing.T) {
 	}
 	mustGolden(t, diff, `{
   "format": "CtxTemporalDiff",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "generated_at": "2026-01-02T03:04:06.123456789Z",
   "before": "HOME/.ctx/snapshots/latest.json",
   "added": [],
   "updated": [
     {
       "before": {
-        "id": "thread-0002",
+        "id": "claude/thread-0002",
+        "native_session_id": "thread-0002",
+        "record_kind": "session",
         "provider": "claude-code",
         "environment": "claude-code",
         "project_root": "demo",
@@ -298,7 +313,9 @@ func TestTemporalDiffGolden(t *testing.T) {
         "line_count": 0
       },
       "after": {
-        "id": "thread-0002",
+        "id": "claude/thread-0002",
+        "native_session_id": "thread-0002",
+        "record_kind": "session",
         "provider": "claude-code",
         "environment": "claude-code",
         "project_root": "demo",

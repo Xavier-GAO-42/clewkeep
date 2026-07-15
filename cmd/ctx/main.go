@@ -12,11 +12,19 @@ import (
 	"github.com/Xavier-GAO-42/clewkeep/internal/core"
 )
 
-const version = "0.1.0-rc.1"
+const version = "0.1.0-rc.2"
 
 type scanFlags struct {
 	full bool
 	json bool
+}
+
+type searchArgs struct {
+	query    string
+	provider string
+	project  string
+	limit    int
+	json     bool
 }
 
 func main() {
@@ -57,7 +65,7 @@ func run(args []string) error {
 			return printJSON(catalog)
 		}
 		providers, projects := summarize(catalog.Threads)
-		fmt.Printf("scanned: %d thread(s), %d provider(s), %d project(s)\n", len(catalog.Threads), providers, projects)
+		fmt.Printf("scanned: %d indexed record(s), %d provider(s), %d project(s)\n", len(catalog.Threads), providers, projects)
 		fmt.Println("catalog:", application.StoreHome)
 	case "status":
 		status, err := application.Status()
@@ -69,7 +77,7 @@ func run(args []string) error {
 		}
 		fmt.Println("catalog:", status.CatalogPath)
 		fmt.Println("generated:", status.GeneratedAt)
-		fmt.Printf("threads: %d  providers: %d  projects: %d  warnings: %d\n", status.Threads, len(status.Providers), status.Projects, status.Warnings)
+		fmt.Printf("indexed records: %d  providers: %d  projects: %d  warnings: %d\n", status.Threads, len(status.Providers), status.Projects, status.Warnings)
 	case "list", "ls":
 		threads, err := application.List(option(args[1:], "--provider"), option(args[1:], "--project"))
 		if err != nil {
@@ -117,23 +125,19 @@ func run(args []string) error {
 		}
 		fmt.Printf("named: %s -> %s\n", name, thread.ID)
 	case "search":
-		positionals := positional(args[1:], map[string]bool{"--json": false, "--limit": true})
-		if len(positionals) == 0 {
-			return fmt.Errorf("usage: ctx search <query> [--limit <n>] [--json]")
-		}
-		limit := 20
-		if value := option(args[1:], "--limit"); value != "" {
-			parsed, err := strconv.Atoi(value)
-			if err != nil || parsed <= 0 || parsed > 500 {
-				return fmt.Errorf("--limit must be between 1 and 500")
-			}
-			limit = parsed
-		}
-		hits, err := application.Search(strings.Join(positionals, " "), limit)
+		search, err := parseSearchArgs(args[1:])
 		if err != nil {
 			return err
 		}
-		if hasFlag(args[1:], "--json") {
+		hits, err := application.SearchWithOptions(search.query, app.SearchOptions{
+			Provider: search.provider,
+			Project:  search.project,
+			Limit:    search.limit,
+		})
+		if err != nil {
+			return err
+		}
+		if search.json {
 			return printJSON(hits)
 		}
 		for _, hit := range hits {
@@ -153,7 +157,7 @@ func run(args []string) error {
 			return printJSON(snapshot)
 		}
 		fmt.Println("snapshot:", path)
-		fmt.Println("threads:", len(snapshot.Threads))
+		fmt.Println("indexed records:", len(snapshot.Threads))
 	case "diff":
 		if len(args) < 2 || args[1] != "--since" {
 			return fmt.Errorf("usage: ctx diff --since [latest|snapshot] [--json]")
@@ -203,7 +207,7 @@ Usage:
   ctx scan [--full] [--json]
   ctx status [--json]
   ctx list [--provider <name>] [--project <text>] [--json]
-  ctx search <query> [--limit <n>] [--json]
+  ctx search <query> [--provider <name>] [--project <text>] [--limit <n>] [--json]
   ctx show <id-or-name> [--json]
   ctx name <id-or-name> <name>
   ctx snapshot [--name <name>] [--json]
@@ -226,6 +230,78 @@ func parseScanFlags(args []string) (scanFlags, error) {
 		}
 	}
 	return flags, nil
+}
+
+func parseSearchArgs(args []string) (searchArgs, error) {
+	result := searchArgs{limit: 20}
+	seen := map[string]bool{}
+	query := make([]string, 0)
+	flagsEnded := false
+	for index := 0; index < len(args); index++ {
+		value := args[index]
+		if flagsEnded {
+			query = append(query, value)
+			continue
+		}
+		if value == "--" {
+			flagsEnded = true
+			continue
+		}
+		if !strings.HasPrefix(value, "--") {
+			query = append(query, value)
+			continue
+		}
+		flag, inline, hasInline := value, "", false
+		if separator := strings.IndexByte(value, '='); separator >= 0 {
+			flag, inline, hasInline = value[:separator], value[separator+1:], true
+		}
+		switch flag {
+		case "--json":
+			if hasInline {
+				return searchArgs{}, fmt.Errorf("--json does not accept a value")
+			}
+			if seen[flag] {
+				return searchArgs{}, fmt.Errorf("duplicate search flag %s", flag)
+			}
+			seen[flag] = true
+			result.json = true
+		case "--provider", "--project", "--limit":
+			if seen[flag] {
+				return searchArgs{}, fmt.Errorf("duplicate search flag %s", flag)
+			}
+			seen[flag] = true
+			argument := inline
+			if !hasInline {
+				if index+1 >= len(args) || strings.HasPrefix(args[index+1], "--") {
+					return searchArgs{}, fmt.Errorf("missing value for %s", flag)
+				}
+				index++
+				argument = args[index]
+			}
+			if strings.TrimSpace(argument) == "" {
+				return searchArgs{}, fmt.Errorf("empty value for %s", flag)
+			}
+			switch flag {
+			case "--provider":
+				result.provider = argument
+			case "--project":
+				result.project = argument
+			case "--limit":
+				parsed, err := strconv.Atoi(argument)
+				if err != nil || parsed <= 0 || parsed > 500 {
+					return searchArgs{}, fmt.Errorf("--limit must be between 1 and 500")
+				}
+				result.limit = parsed
+			}
+		default:
+			return searchArgs{}, fmt.Errorf("unknown search flag %q", flag)
+		}
+	}
+	result.query = strings.TrimSpace(strings.Join(query, " "))
+	if result.query == "" {
+		return searchArgs{}, fmt.Errorf("usage: ctx search <query> [--provider <name>] [--project <text>] [--limit <n>] [--json]")
+	}
+	return result, nil
 }
 
 func printJSON(value any) error {

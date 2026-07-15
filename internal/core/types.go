@@ -1,10 +1,11 @@
 package core
 
 const (
-	CatalogSchemaVersion   = "0.1"
-	ScanCacheSchemaVersion = "0.1"
-	SnapshotSchemaVersion  = "0.1"
-	DiffSchemaVersion      = "0.1"
+	CatalogSchemaVersion   = "0.2"
+	ScanCacheSchemaVersion = "0.2"
+	NameIndexSchemaVersion = "0.2"
+	SnapshotSchemaVersion  = "0.2"
+	DiffSchemaVersion      = "0.2"
 )
 
 type Relation struct {
@@ -16,6 +17,9 @@ type Relation struct {
 
 type Thread struct {
 	ID               string     `json:"id"`
+	NativeSessionID  string     `json:"native_session_id"`
+	NativeAgentID    string     `json:"native_agent_id,omitempty"`
+	RecordKind       string     `json:"record_kind"`
 	Provider         string     `json:"provider"`
 	Environment      string     `json:"environment"`
 	ProjectRoot      string     `json:"project_root"`

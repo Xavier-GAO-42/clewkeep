@@ -4,6 +4,7 @@ Only the product father or integrator changes priority. Each Agent takes one ite
 
 ## Now
 
+- [x] Give every indexed record a stable provider-qualified ID, migrate ctx metadata safely, and add strict `search --project/--provider` filters for RC1.2.
 - [x] Fix, format, build, and test the Go bootstrap.
 - [x] Verify Codex scanning against synthetic fixtures and the local read-only catalog.
 - [x] Verify Claude Code scanning against synthetic fixtures and the local read-only catalog.

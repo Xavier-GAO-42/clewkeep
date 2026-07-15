@@ -116,13 +116,19 @@ func LoadCatalog(storeHome string) (*Catalog, error) {
 		}
 		return nil, err
 	}
+	if catalog.Format != "CtxCatalog" || catalog.SchemaVersion != CatalogSchemaVersion {
+		return nil, fmt.Errorf("catalog schema %q/%q is incompatible with %q/%q; run ctx scan", catalog.Format, catalog.SchemaVersion, "CtxCatalog", CatalogSchemaVersion)
+	}
+	if err := ValidateThreadSet(catalog.Threads); err != nil {
+		return nil, fmt.Errorf("catalog contains invalid identity data: %w; run ctx scan", err)
+	}
 	return &catalog, nil
 }
 
 func LoadNames(storeHome string) (*NameIndex, error) {
 	index := &NameIndex{
 		Format:        "CtxNameIndex",
-		SchemaVersion: "0.1",
+		SchemaVersion: NameIndexSchemaVersion,
 		Names:         map[string]string{},
 	}
 	if err := ReadJSON(NamesPath(storeHome), index); err != nil {
@@ -133,6 +139,19 @@ func LoadNames(storeHome string) (*NameIndex, error) {
 	}
 	if index.Names == nil {
 		index.Names = map[string]string{}
+	}
+	if index.Format != "CtxNameIndex" {
+		return nil, fmt.Errorf("name index format %q is incompatible with CtxNameIndex", index.Format)
+	}
+	if index.SchemaVersion != NameIndexSchemaVersion && index.SchemaVersion != "0.1" {
+		return nil, fmt.Errorf("name index schema %q is incompatible with %q", index.SchemaVersion, NameIndexSchemaVersion)
+	}
+	if index.SchemaVersion == NameIndexSchemaVersion {
+		for name, id := range index.Names {
+			if err := ValidateCanonicalID(id); err != nil {
+				return nil, fmt.Errorf("name %q has invalid canonical target: %w", name, err)
+			}
+		}
 	}
 	return index, nil
 }

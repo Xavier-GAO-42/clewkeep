@@ -46,14 +46,14 @@ func TestLocalWorkflow(t *testing.T) {
 		t.Fatalf("unexpected status: %#v, %v", status, err)
 	}
 	hits, err := a.Search("rare-needle", 10)
-	if err != nil || len(hits) != 1 || hits[0].ThreadID != "codex-1" {
+	if err != nil || len(hits) != 1 || hits[0].ThreadID != "codex/codex-1" {
 		t.Fatalf("unexpected hits: %#v, %v", hits, err)
 	}
 	if _, err := a.Name("codex-1", "demo-session"); err != nil {
 		t.Fatal(err)
 	}
 	thread, alias, err := a.Show("demo-session")
-	if err != nil || alias != "demo-session" || thread.ID != "codex-1" {
+	if err != nil || alias != "demo-session" || thread.ID != "codex/codex-1" {
 		t.Fatalf("unexpected show result: %#v, %q, %v", thread, alias, err)
 	}
 	if _, _, err := a.Snapshot(ctx, "baseline"); err != nil {
@@ -81,7 +81,7 @@ func TestLocalWorkflow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(diff.Updated) != 1 || diff.Updated[0].After.ID != "codex-1" {
+	if len(diff.Updated) != 1 || diff.Updated[0].After.ID != "codex/codex-1" {
 		t.Fatalf("unexpected diff: %#v", diff)
 	}
 }

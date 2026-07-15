@@ -59,6 +59,10 @@ func readCodexThread(path string) (*core.Thread, error) {
 	if id == "" {
 		return nil, fmt.Errorf("missing Codex thread id")
 	}
+	canonicalID, err := core.CodexCanonicalID(id)
+	if err != nil {
+		return nil, err
+	}
 	info, err := os.Stat(path)
 	if err != nil {
 		return nil, err
@@ -70,7 +74,9 @@ func readCodexThread(path string) (*core.Thread, error) {
 	source := codexSourceLabel(payload["source"])
 	relations, warnings := codexRelations(payload)
 	return &core.Thread{
-		ID:               id,
+		ID:               canonicalID,
+		NativeSessionID:  id,
+		RecordKind:       core.RecordKindSession,
 		Provider:         "codex",
 		Environment:      codexEnvironment(source),
 		ProjectRoot:      stringValue(payload["cwd"]),

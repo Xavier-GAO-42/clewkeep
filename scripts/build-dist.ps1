@@ -2,7 +2,7 @@
 param(
     [Parameter()]
     [ValidatePattern('^[0-9A-Za-z][0-9A-Za-z._-]*$')]
-    [string]$Version = '0.1.0-rc.1'
+    [string]$Version = '0.1.0-rc.2'
 )
 
 Set-StrictMode -Version Latest
@@ -10,8 +10,9 @@ $ErrorActionPreference = 'Stop'
 
 $repoRoot = [System.IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot))
 $distDirectory = [System.IO.Path]::GetFullPath((Join-Path $repoRoot 'dist'))
-$expectedDistDirectory = [System.IO.Path]::GetFullPath((Join-Path $repoRoot 'dist'))
-if ($distDirectory -ne $expectedDistDirectory -or $distDirectory -eq $repoRoot) {
+$distParent = [System.IO.Path]::GetFullPath((Split-Path -Parent $distDirectory))
+$distName = Split-Path -Leaf $distDirectory
+if (-not $distParent.Equals($repoRoot, [StringComparison]::OrdinalIgnoreCase) -or $distName -cne 'dist') {
     throw "Refusing to clean unexpected dist path: $distDirectory"
 }
 
@@ -45,6 +46,23 @@ function Copy-BuildSources {
         [System.IO.Directory]::CreateDirectory($destinationParent) | Out-Null
         Copy-Item -LiteralPath $sourceFile.FullName -Destination $destinationPath
     }
+}
+
+function Copy-NormalizedText {
+    param(
+        [Parameter(Mandatory)] [string]$SourcePath,
+        [Parameter(Mandatory)] [string]$DestinationPath
+    )
+
+    $content = [System.IO.File]::ReadAllText($SourcePath)
+    $content = $content.Replace("`r`n", "`n").Replace("`r", "`n")
+    $destinationParent = Split-Path -Parent $DestinationPath
+    [System.IO.Directory]::CreateDirectory($destinationParent) | Out-Null
+    [System.IO.File]::WriteAllText(
+        $DestinationPath,
+        $content,
+        [System.Text.UTF8Encoding]::new($false)
+    )
 }
 
 function Set-BuildVersion {
@@ -227,20 +245,36 @@ $targets = @(
     [pscustomobject]@{ OS = 'linux'; Arch = 'arm64'; Extension = '.tar.gz' }
 )
 
-$temporaryRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("clewkeep-dist-" + [Guid]::NewGuid().ToString('N'))
+$temporaryBase = [System.IO.Path]::GetFullPath([System.IO.Path]::GetTempPath())
+$trimSeparators = [char[]]@([System.IO.Path]::DirectorySeparatorChar, [System.IO.Path]::AltDirectorySeparatorChar)
+$temporaryPrefix = $temporaryBase.TrimEnd($trimSeparators) + [System.IO.Path]::DirectorySeparatorChar
+$temporaryRoot = [System.IO.Path]::GetFullPath((Join-Path $temporaryBase ("clewkeep-dist-" + [Guid]::NewGuid().ToString('N'))))
+if (-not $temporaryRoot.StartsWith($temporaryPrefix, [StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing unexpected temporary path: $temporaryRoot"
+}
 $sourceRoot = Join-Path $temporaryRoot 'source'
 $stageRoot = Join-Path $temporaryRoot 'stage'
+$documentRoot = Join-Path $temporaryRoot 'documents'
 
 try {
     if (Test-Path -LiteralPath $distDirectory) {
+        $distItem = Get-Item -LiteralPath $distDirectory -Force
+        if (-not $distItem.PSIsContainer -or ($distItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+            throw "Refusing to recursively clean a non-directory or reparse point: $distDirectory"
+        }
         Remove-Item -LiteralPath $distDirectory -Recurse -Force
     }
     [System.IO.Directory]::CreateDirectory($distDirectory) | Out-Null
     [System.IO.Directory]::CreateDirectory($sourceRoot) | Out-Null
     [System.IO.Directory]::CreateDirectory($stageRoot) | Out-Null
+    [System.IO.Directory]::CreateDirectory($documentRoot) | Out-Null
 
     Copy-BuildSources $repoRoot $sourceRoot
     Set-BuildVersion (Join-Path $sourceRoot 'cmd\ctx\main.go') $Version
+    $normalizedReadme = Join-Path $documentRoot 'README.md'
+    $normalizedLicense = Join-Path $documentRoot 'LICENSE'
+    Copy-NormalizedText (Join-Path $repoRoot 'README.md') $normalizedReadme
+    Copy-NormalizedText (Join-Path $repoRoot 'LICENSE') $normalizedLicense
 
     foreach ($target in $targets) {
         $binaryName = if ($target.OS -eq 'windows') { 'ctx.exe' } else { 'ctx' }
@@ -272,8 +306,8 @@ try {
 
         $entries = @(
             [pscustomobject]@{ Name = $binaryName; Path = $binaryPath; Mode = 493 },
-            [pscustomobject]@{ Name = 'README.md'; Path = (Join-Path $repoRoot 'README.md'); Mode = 420 },
-            [pscustomobject]@{ Name = 'LICENSE'; Path = (Join-Path $repoRoot 'LICENSE'); Mode = 420 }
+            [pscustomobject]@{ Name = 'README.md'; Path = $normalizedReadme; Mode = 420 },
+            [pscustomobject]@{ Name = 'LICENSE'; Path = $normalizedLicense; Mode = 420 }
         )
         $archiveName = "clewkeep-$Version-$($target.OS)-$($target.Arch)$($target.Extension)"
         $archivePath = Join-Path $distDirectory $archiveName
@@ -298,6 +332,14 @@ try {
     Write-Host "wrote SHA256SUMS"
 } finally {
     if (Test-Path -LiteralPath $temporaryRoot) {
-        Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
+        $resolved = [System.IO.Path]::GetFullPath($temporaryRoot)
+        if (-not $resolved.StartsWith($temporaryPrefix, [StringComparison]::OrdinalIgnoreCase) -or $resolved -eq $temporaryBase) {
+            throw "Refusing unexpected cleanup path: $resolved"
+        }
+        $temporaryItem = Get-Item -LiteralPath $resolved -Force
+        if (-not $temporaryItem.PSIsContainer -or ($temporaryItem.Attributes -band [System.IO.FileAttributes]::ReparsePoint)) {
+            throw "Refusing to recursively clean a non-directory or reparse point: $resolved"
+        }
+        Remove-Item -LiteralPath $resolved -Recurse -Force
     }
 }

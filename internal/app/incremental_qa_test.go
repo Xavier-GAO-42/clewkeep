@@ -42,11 +42,13 @@ func validCacheEntryFixture(root string) core.ScanCacheEntry {
 		Size:            10,
 		ModTimeUnixNano: modTime.UnixNano(),
 		Thread: core.Thread{
-			ID:         "alpha",
-			Provider:   "codex",
-			UpdatedAt:  modTime.Format(time.RFC3339Nano),
-			NativePath: path,
-			LineCount:  1,
+			ID:              "codex/alpha",
+			NativeSessionID: "alpha",
+			RecordKind:      core.RecordKindSession,
+			Provider:        "codex",
+			UpdatedAt:       modTime.Format(time.RFC3339Nano),
+			NativePath:      path,
+			LineCount:       1,
 		},
 	}
 }
@@ -148,7 +150,7 @@ func TestLoadReusableScanCacheRejectsDuplicateAndForgedFiles(t *testing.T) {
 	t.Run("wrong schema version is ignored", func(t *testing.T) {
 		storeHome := t.TempDir()
 		cache := base
-		cache.SchemaVersion = "0.2"
+		cache.SchemaVersion = "0.1"
 		cache.Entries = []core.ScanCacheEntry{validCacheEntryFixture(root)}
 		writeCache(t, storeHome, cache)
 		if got := loadReusableScanCache(storeHome, scanStarted); len(got) != 0 {

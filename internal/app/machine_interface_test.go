@@ -94,11 +94,13 @@ func TestScanOutputsGolden(t *testing.T) {
 	gotCatalog := normalizeMachineJSON(t, catalogRaw, userHome)
 	wantCatalog := `{
   "format": "CtxCatalog",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "generated_at": "GENERATED_AT",
   "threads": [
     {
-      "id": "claude-1",
+      "id": "claude/claude-1",
+      "native_session_id": "claude-1",
+      "record_kind": "session",
       "provider": "claude-code",
       "environment": "claude-code",
       "project_root": "C:/synthetic/other",
@@ -112,7 +114,9 @@ func TestScanOutputsGolden(t *testing.T) {
       "line_count": 1
     },
     {
-      "id": "alpha",
+      "id": "codex/alpha",
+      "native_session_id": "alpha",
+      "record_kind": "session",
       "provider": "codex",
       "environment": "codex-exec",
       "project_root": "C:/synthetic/project",
@@ -125,7 +129,9 @@ func TestScanOutputsGolden(t *testing.T) {
       "line_count": 2
     },
     {
-      "id": "zeta",
+      "id": "codex/zeta",
+      "native_session_id": "zeta",
+      "record_kind": "session",
       "provider": "codex",
       "environment": "codex-exec",
       "project_root": "C:/synthetic/project",
@@ -151,7 +157,7 @@ func TestScanOutputsGolden(t *testing.T) {
 	gotCache := normalizeMachineJSON(t, cacheRaw, userHome)
 	wantCache := `{
   "format": "CtxScanCache",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "generated_at": "GENERATED_AT",
   "entries": [
     {
@@ -161,7 +167,9 @@ func TestScanOutputsGolden(t *testing.T) {
       "size": 87,
       "mod_time_unix_nano": 1767323047000000000,
       "thread": {
-        "id": "claude-1",
+        "id": "claude/claude-1",
+        "native_session_id": "claude-1",
+        "record_kind": "session",
         "provider": "claude-code",
         "environment": "claude-code",
         "project_root": "C:/synthetic/other",
@@ -182,7 +190,9 @@ func TestScanOutputsGolden(t *testing.T) {
       "size": 191,
       "mod_time_unix_nano": 1767323045000000000,
       "thread": {
-        "id": "zeta",
+        "id": "codex/zeta",
+        "native_session_id": "zeta",
+        "record_kind": "session",
         "provider": "codex",
         "environment": "codex-exec",
         "project_root": "C:/synthetic/project",
@@ -202,7 +212,9 @@ func TestScanOutputsGolden(t *testing.T) {
       "size": 192,
       "mod_time_unix_nano": 1767323046000000000,
       "thread": {
-        "id": "alpha",
+        "id": "codex/alpha",
+        "native_session_id": "alpha",
+        "record_kind": "session",
         "provider": "codex",
         "environment": "codex-exec",
         "project_root": "C:/synthetic/project",
@@ -250,7 +262,7 @@ func TestScanEmptyMachineGolden(t *testing.T) {
 	got := normalizeMachineJSON(t, raw, userHome)
 	want := `{
   "format": "CtxCatalog",
-  "schema_version": "0.1",
+  "schema_version": "0.2",
   "generated_at": "GENERATED_AT",
   "threads": []
 }

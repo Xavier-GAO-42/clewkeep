@@ -25,7 +25,7 @@ func TestCodexScanPreservesNativeFile(t *testing.T) {
 		t.Fatalf("got %d threads, want 1", len(threads))
 	}
 	thread := threads[0]
-	if thread.ID != "codex-1" || thread.Environment != "codex-subagent" || thread.ProjectRoot != "D:/work/demo" {
+	if thread.ID != "codex/codex-1" || thread.NativeSessionID != "codex-1" || thread.RecordKind != "session" || thread.Environment != "codex-subagent" || thread.ProjectRoot != "D:/work/demo" {
 		t.Fatalf("unexpected thread: %#v", thread)
 	}
 	if len(thread.NativeRelations) != 1 || thread.NativeRelations[0].ParentThreadID != "parent-1" {
@@ -60,7 +60,7 @@ func TestClaudeCodeScan(t *testing.T) {
 		t.Fatalf("got %d threads, want 1", len(threads))
 	}
 	thread := threads[0]
-	if thread.ID != "claude-1" || thread.Provider != "claude-code" || thread.ProjectRoot != "D:/work/claude-demo" {
+	if thread.ID != "claude/claude-1" || thread.NativeSessionID != "claude-1" || thread.RecordKind != "session" || thread.Provider != "claude-code" || thread.ProjectRoot != "D:/work/claude-demo" {
 		t.Fatalf("unexpected thread: %#v", thread)
 	}
 }

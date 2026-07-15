@@ -25,7 +25,7 @@ remote repo
 
 ## v0.1
 
-One command discovers existing Codex and Claude Code sessions. Users and Agents can list, search, inspect, name, snapshot, and structurally diff them without modifying native data.
+One command discovers existing Codex and Claude Code context as indexed records, including provider-native sessions and subagents. Users and Agents can list, search, inspect, name, snapshot, and structurally diff those records without modifying native data. Record counts are not session counts.
 
 Not in v0.1: remote sync, semantic merge, native migration, rich GUI, telemetry, complex permissions.
 

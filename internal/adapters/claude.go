@@ -2,9 +2,9 @@ package adapters
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 
 	"github.com/Xavier-GAO-42/clewkeep/internal/core"
 )
@@ -34,15 +34,51 @@ func (ClaudeCode) Parse(ctx context.Context, root string, file NativeFile) (*cor
 
 func readClaudeThread(path, root string) (*core.Thread, error) {
 	sessionID := ""
+	agentID := ""
 	cwd := ""
 	createdAt := ""
+	var sidechain *bool
+	var parseErr error
 	_, err := scanJSONLines(path, 25, func(_ int, raw []byte) bool {
 		object, ok := decodeObject(raw)
 		if !ok {
 			return true
 		}
-		if sessionID == "" {
-			sessionID = stringValue(object["sessionId"])
+		if value, exists := object["sessionId"]; exists {
+			text, ok := value.(string)
+			if !ok || text == "" {
+				parseErr = fmt.Errorf("invalid Claude sessionId field")
+				return false
+			}
+			if sessionID != "" && sessionID != text {
+				parseErr = fmt.Errorf("conflicting Claude sessionId fields")
+				return false
+			}
+			sessionID = text
+		}
+		if value, exists := object["agentId"]; exists {
+			text, ok := value.(string)
+			if !ok || text == "" {
+				parseErr = fmt.Errorf("invalid Claude agentId field")
+				return false
+			}
+			if agentID != "" && agentID != text {
+				parseErr = fmt.Errorf("conflicting Claude agentId fields")
+				return false
+			}
+			agentID = text
+		}
+		if value, exists := object["isSidechain"]; exists {
+			flag, ok := value.(bool)
+			if !ok {
+				parseErr = fmt.Errorf("invalid Claude isSidechain field")
+				return false
+			}
+			if sidechain != nil && *sidechain != flag {
+				parseErr = fmt.Errorf("conflicting Claude isSidechain fields")
+				return false
+			}
+			sidechain = &flag
 		}
 		if cwd == "" {
 			cwd = stringValue(object["cwd"])
@@ -50,13 +86,27 @@ func readClaudeThread(path, root string) (*core.Thread, error) {
 		if createdAt == "" {
 			createdAt = stringValue(object["timestamp"])
 		}
-		return sessionID == "" || cwd == ""
+		return true
 	})
 	if err != nil {
 		return nil, err
 	}
+	if parseErr != nil {
+		return nil, parseErr
+	}
 	if sessionID == "" {
-		sessionID = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+		return nil, fmt.Errorf("missing Claude sessionId; file-name fallback is not allowed")
+	}
+	if sidechain != nil && !*sidechain && agentID != "" {
+		return nil, fmt.Errorf("Claude record has agentId but isSidechain is false")
+	}
+	isSubagent := agentID != "" || (sidechain != nil && *sidechain)
+	if isSubagent && agentID == "" {
+		return nil, fmt.Errorf("Claude subagent is missing agentId")
+	}
+	canonicalID, err := core.ClaudeCanonicalID(sessionID, agentID)
+	if err != nil {
+		return nil, err
 	}
 	info, err := os.Stat(path)
 	if err != nil {
@@ -75,8 +125,11 @@ func readClaudeThread(path, root string) (*core.Thread, error) {
 			project = projectDir
 		}
 	}
-	return &core.Thread{
-		ID:              sessionID,
+	thread := &core.Thread{
+		ID:              canonicalID,
+		NativeSessionID: sessionID,
+		NativeAgentID:   agentID,
+		RecordKind:      core.RecordKindSession,
 		Provider:        "claude-code",
 		Environment:     "claude-code",
 		ProjectRoot:     project,
@@ -89,5 +142,9 @@ func readClaudeThread(path, root string) (*core.Thread, error) {
 		Originator:      "claude-code",
 		LineCount:       count,
 		NativeRelations: nil,
-	}, nil
+	}
+	if isSubagent {
+		thread.RecordKind = core.RecordKindSubagent
+	}
+	return thread, nil
 }

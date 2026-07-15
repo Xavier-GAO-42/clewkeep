@@ -71,7 +71,7 @@ func TestRunScanFullJSONUsesFrozenCatalogContract(t *testing.T) {
 	if catalog.Format != "CtxCatalog" || catalog.SchemaVersion != core.CatalogSchemaVersion {
 		t.Fatalf("scan --full --json contract = %q/%q", catalog.Format, catalog.SchemaVersion)
 	}
-	if len(catalog.Threads) != 1 || catalog.Threads[0].ID != "synthetic-cli" {
+	if len(catalog.Threads) != 1 || catalog.Threads[0].ID != "codex/synthetic-cli" {
 		t.Fatalf("scan --full --json threads = %#v", catalog.Threads)
 	}
 	for _, path := range []string{core.CatalogPath(storeHome), core.ScanCachePath(storeHome)} {
