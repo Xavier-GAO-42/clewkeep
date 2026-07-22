@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clewkeep"
+  short_description: "Find local Codex and Claude context safely"
+  default_prompt: "Use $clewkeep to find relevant local Codex or Claude Code context and trace it back to native evidence."
